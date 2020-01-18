@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::{error, trace};
 use metrics_core::{Builder, Drain, Observe, Observer};
 use std::{
     net::UdpSocket,
@@ -48,7 +48,7 @@ where
         if let Err(e) = self.sock.send_to(&output.into_bytes(), &self.endpoint) {
             println!("{:?}", e);
         } else {
-            info!("{:?}", size);
+            trace!("Sent {} bytes", size);
         }
     }
 }

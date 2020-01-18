@@ -1,21 +1,26 @@
 use hdrhistogram::Histogram;
 use metrics_core::{Builder, Drain, Key, Label, Observer};
-use metrics_util::{parse_quantiles, MetricsTree, Quantile};
+use metrics_util::{parse_quantiles, Quantile};
 use std::collections::HashMap;
 use std::time::SystemTime;
+use log::debug;
 
 /// Builder for [`InfluxObserver`].
 pub struct InfluxBuilder {
     quantiles: Vec<Quantile>,
+    app_name: String,
+    cluster_name: String,
 }
 
 impl InfluxBuilder {
     /// Creates a new [`InfluxBuilder`] with default values.
-    pub fn new() -> Self {
+    pub fn new(app_name: String, cluster_name: String) -> Self {
         let quantiles = parse_quantiles(&[0.0, 0.5, 0.8, 0.99, 1.0]);
 
         Self {
             quantiles,
+            app_name,
+            cluster_name,
         }
     }
 
@@ -37,36 +42,55 @@ impl Builder for InfluxBuilder {
     fn build(&self) -> Self::Output {
         InfluxObserver {
             quantiles: self.quantiles.clone(),
-            tree: MetricsTree::default(),
             histos: HashMap::new(),
             dw_metrics: Vec::new(),
+            app_name: self.app_name.clone(),
+            cluster_name: self.cluster_name.clone(),
         }
-    }
-}
-
-impl Default for InfluxBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 /// Observes metrics in InfluxDB format.
 pub struct InfluxObserver {
     pub quantiles: Vec<Quantile>,
-    pub tree: MetricsTree,
     pub histos: HashMap<Key, Histogram<u64>>,
     pub dw_metrics: Vec<String>,
+    app_name: String,
+    cluster_name: String,
+}
+
+impl InfluxObserver {
+    fn format_metrics(&self, key: Key, value: u64, value_key: &str) -> String {
+        let (name, labels) = key.into_parts();
+        let now = epoch_time();
+        if labels.is_empty() {
+                format!("{},app={},cluster={} {}={} {}", name, self.app_name, self.cluster_name,
+                    value_key, value, now.as_nanos()
+                )
+        } else {
+            let kv_pairs = labels
+                .iter()
+                .map(|label| format!("{}={}", label.key(), label.value()))
+                .collect::<Vec<_>>();
+            format!(
+                "{},app={},cluster={},{} count={} {}", name, self.app_name, self.cluster_name,
+                kv_pairs.join(","), value, now.as_nanos()
+            )
+        }
+    }
 }
 
 impl Observer for InfluxObserver {
     fn observe_counter(&mut self, key: Key, value: u64) {
-        let m = format_metrics(key, value);
+        let m = self.format_metrics(key, value, "count");
+        debug!("metric: {}", m);
         self.dw_metrics.push(m);
     }
 
     fn observe_gauge(&mut self, key: Key, value: i64) {
-        let (levels, name) = key_to_parts(key);
-        self.tree.insert_value(levels, name, value);
+        let m = self.format_metrics(key, value as u64, "gauge");
+        debug!("metric: {}", m);
+        self.dw_metrics.push(m);
     }
 
     fn observe_histogram(&mut self, key: Key, values: &[u64]) {
@@ -85,7 +109,7 @@ impl Observer for InfluxObserver {
 
 impl Drain<String> for InfluxObserver {
     fn drain(&mut self) -> String {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        let now = epoch_time();
         for (key, h) in self.histos.drain() {
             let (labels, name) = format_labels(key);
             let values = hist_to_values(h.clone(), &self.quantiles);
@@ -99,9 +123,12 @@ impl Drain<String> for InfluxObserver {
 
         let rendered = self.dw_metrics.join("\n");
         self.dw_metrics.clear();
-        self.tree.clear();
         rendered
     }
+}
+
+fn epoch_time() -> std::time::Duration {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap()
 }
 
 fn format_labels(key: Key) -> (String, String) {
@@ -115,42 +142,6 @@ fn format_labels(key: Key) -> (String, String) {
             .collect::<Vec<_>>();
         (kv_pairs.join(","), name.to_string())
     }
-}
-
-fn format_metrics(key: Key, value: u64) -> String {
-    let (name, labels) = key.into_parts();
-    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-    if labels.is_empty() {
-            format!("{} count={} {}", name, value, now.as_nanos())
-    } else {
-        let kv_pairs = labels
-            .iter()
-            .map(|label| format!("{}={}", label.key(), label.value()))
-            .collect::<Vec<_>>();
-        format!("{},{} count={} {}", name, kv_pairs.join(","), value, now.as_nanos())
-    }
-}
-
-fn key_to_parts(key: Key) -> (Vec<String>, String) {
-    let (name, labels) = key.into_parts();
-    let mut parts = name.split('.').map(ToOwned::to_owned).collect::<Vec<_>>();
-    let name = parts.pop().expect("name didn't have a single part");
-
-    let labels = labels
-        .into_iter()
-        .map(Label::into_parts)
-        .map(|(k, v)| format!("{}=\"{}\"", k, v))
-        .collect::<Vec<_>>()
-        .join(",");
-    let label = if labels.is_empty() {
-        String::new()
-    } else {
-        format!("{{{}}}", labels)
-    };
-
-    let fname = format!("{}{}", name, label);
-
-    (parts, fname)
 }
 
 fn hist_to_values(

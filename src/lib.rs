@@ -31,7 +31,7 @@ pub fn init_reporter(settings: &MetricsConfig) -> Result<(), String> {
         .expect("failed to build receiver");
 
     let controller = receiver.controller();
-    let builder = InfluxBuilder::new();
+    let builder = InfluxBuilder::new(settings.app_name.clone(), settings.cluster_name.clone());
     let mut exporter = UdpExporter::new(
         controller.clone(),
         builder,
