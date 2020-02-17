@@ -23,10 +23,9 @@ use observers::observer_influx::InfluxBuilder;
 use exporters::exporter_udp::UdpExporter;
 pub type MetricsConfig = metrics_config::MetricsConfig;
 
-
 pub fn init_reporter(settings: &MetricsConfig) -> Result<(), String> {
     let receiver = Receiver::builder()
-        .histogram(Duration::from_secs(5), Duration::from_secs(1))
+        .histogram(Duration::from_secs(10), Duration::from_secs(2))
         .build()
         .expect("failed to build receiver");
 

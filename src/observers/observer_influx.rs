@@ -15,7 +15,7 @@ pub struct InfluxBuilder {
 impl InfluxBuilder {
     /// Creates a new [`InfluxBuilder`] with default values.
     pub fn new(app_name: String, cluster_name: String) -> Self {
-        let quantiles = parse_quantiles(&[0.0, 0.5, 0.8, 0.99, 1.0]);
+        let quantiles = parse_quantiles(&[0.0, 0.5, 0.75, 0.99, 1.0]);
 
         Self {
             quantiles,
@@ -73,8 +73,8 @@ impl InfluxObserver {
                 .map(|label| format!("{}={}", label.key(), label.value()))
                 .collect::<Vec<_>>();
             format!(
-                "{},app={},cluster={},{} count={} {}", name, self.app_name, self.cluster_name,
-                kv_pairs.join(","), value, now.as_nanos()
+                "{},app={},cluster={},{} {}={} {}", name, self.app_name, self.cluster_name,
+                kv_pairs.join(","), value_key, value, now.as_nanos()
             )
         }
     }
