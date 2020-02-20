@@ -1,26 +1,26 @@
 use hdrhistogram::Histogram;
-use metrics_core::{Builder, Drain, Key, Label, Observer};
+use log::debug;
+use metrics_core::{Builder, Drain, Key, Observer};
 use metrics_util::{parse_quantiles, Quantile};
 use std::collections::HashMap;
 use std::time::SystemTime;
-use log::debug;
 
-/// Builder for [`InfluxObserver`].
+/// Builder for [InfluxObserver](InfluxObserver).
 pub struct InfluxBuilder {
     quantiles: Vec<Quantile>,
-    app_name: String,
-    cluster_name: String,
+    prefix: String,
 }
 
 impl InfluxBuilder {
-    /// Creates a new [`InfluxBuilder`] with default values.
-    pub fn new(app_name: String, cluster_name: String) -> Self {
+    /// Creates a new [InfluxBuilder](InfluxBuilder) with default values.
+    ///
+    /// See [InfluxObserver](InfluxObserver) for usage of `prefix`.
+    pub fn new(prefix: Option<String>) -> Self {
         let quantiles = parse_quantiles(&[0.0, 0.5, 0.75, 0.99, 1.0]);
 
         Self {
             quantiles,
-            app_name,
-            cluster_name,
+            prefix: prefix.unwrap_or("".to_string()),
         }
     }
 
@@ -43,38 +43,61 @@ impl Builder for InfluxBuilder {
         InfluxObserver {
             quantiles: self.quantiles.clone(),
             histos: HashMap::new(),
-            dw_metrics: Vec::new(),
-            app_name: self.app_name.clone(),
-            cluster_name: self.cluster_name.clone(),
+            metrics: Vec::new(),
+            prefix: self.prefix.clone(),
         }
     }
 }
 
 /// Observes metrics in InfluxDB format.
 pub struct InfluxObserver {
-    pub quantiles: Vec<Quantile>,
-    pub histos: HashMap<Key, Histogram<u64>>,
-    pub dw_metrics: Vec<String>,
-    app_name: String,
-    cluster_name: String,
+    quantiles: Vec<Quantile>,
+    histos: HashMap<Key, Histogram<u64>>,
+    metrics: Vec<String>,
+
+    /// A CSV string of `key=value` tags that should be prepended to every metric sent to Influx.
+    ///
+    /// E.g., with `prefix="app=my_app,host=bar"`, generating a metric like this:
+    /// ```
+    /// counter!("my_count", 1);
+    /// ```
+    /// will yield the following sent to InfluxDB:
+    /// ```
+    /// mycount,app=my_app,host=bar value=1
+    /// ```
+    pub prefix: String,
 }
 
 impl InfluxObserver {
     fn format_metrics(&self, key: Key, value: u64, value_key: &str) -> String {
         let (name, labels) = key.into_parts();
         let now = epoch_time();
+        let prefix = match &self.prefix.len() {
+            0 => "".to_string(),
+            _ => format!(",{}", self.prefix)
+        };
         if labels.is_empty() {
-                format!("{},app={},cluster={} {}={} {}", name, self.app_name, self.cluster_name,
-                    value_key, value, now.as_nanos()
-                )
+            format!(
+                "{}{} {}={} {}",
+                name,
+                prefix,
+                value_key,
+                value,
+                now.as_nanos()
+            )
         } else {
             let kv_pairs = labels
                 .iter()
                 .map(|label| format!("{}={}", label.key(), label.value()))
                 .collect::<Vec<_>>();
             format!(
-                "{},app={},cluster={},{} {}={} {}", name, self.app_name, self.cluster_name,
-                kv_pairs.join(","), value_key, value, now.as_nanos()
+                "{}{},{} {}={} {}",
+                name,
+                prefix,
+                kv_pairs.join(","),
+                value_key,
+                value,
+                now.as_nanos()
             )
         }
     }
@@ -84,13 +107,13 @@ impl Observer for InfluxObserver {
     fn observe_counter(&mut self, key: Key, value: u64) {
         let m = self.format_metrics(key, value, "count");
         debug!("metric: {}", m);
-        self.dw_metrics.push(m);
+        self.metrics.push(m);
     }
 
     fn observe_gauge(&mut self, key: Key, value: i64) {
         let m = self.format_metrics(key, value as u64, "gauge");
         debug!("metric: {}", m);
-        self.dw_metrics.push(m);
+        self.metrics.push(m);
     }
 
     fn observe_histogram(&mut self, key: Key, values: &[u64]) {
@@ -118,17 +141,19 @@ impl Drain<String> for InfluxObserver {
             } else {
                 format!("{},{} {} {}", name, labels, values, now.as_nanos())
             };
-            self.dw_metrics.push(m);
+            self.metrics.push(m);
         }
 
-        let rendered = self.dw_metrics.join("\n");
-        self.dw_metrics.clear();
+        let rendered = self.metrics.join("\n");
+        self.metrics.clear();
         rendered
     }
 }
 
 fn epoch_time() -> std::time::Duration {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap()
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
 }
 
 fn format_labels(key: Key) -> (String, String) {
@@ -144,10 +169,7 @@ fn format_labels(key: Key) -> (String, String) {
     }
 }
 
-fn hist_to_values(
-    hist: Histogram<u64>,
-    quantiles: &[Quantile],
-) -> String {
+fn hist_to_values(hist: Histogram<u64>, quantiles: &[Quantile]) -> String {
     let mut values = Vec::new();
     for quantile in quantiles {
         let value = hist.value_at_quantile(quantile.value());

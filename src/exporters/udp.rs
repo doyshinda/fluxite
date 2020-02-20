@@ -1,12 +1,11 @@
 use log::{error, trace};
 use metrics_core::{Builder, Drain, Observe, Observer};
-use std::{
-    net::UdpSocket,
-    time::Duration,
-    thread,
-};
-pub struct UdpExporter <C, B>
-    where B: Builder
+use std::{net::UdpSocket, thread, time::Duration};
+
+/// Exports metrics over UDP.
+pub struct UdpExporter<C, B>
+where
+    B: Builder,
 {
     controller: C,
     observer: B::Output,
@@ -21,7 +20,6 @@ where
     B::Output: Drain<String> + Observer,
     C: Observe,
 {
-
     pub fn new(controller: C, builder: B, interval: Duration, endpoint: &str) -> Self {
         UdpExporter {
             controller,
@@ -46,7 +44,7 @@ where
         let output = self.observer.drain();
         let size = output.len();
         if let Err(e) = self.sock.send_to(&output.into_bytes(), &self.endpoint) {
-            println!("{:?}", e);
+            error!("Error sending on socket: {:?}", e);
         } else {
             trace!("Sent {} bytes", size);
         }

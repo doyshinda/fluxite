@@ -1,1 +1,1 @@
-pub mod observer_influx;
+pub mod influx;

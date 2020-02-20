@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 log = "*"
+syslog = "5.0.0"
 hdrhistogram = "*"
 metrics-util = "*"
 metrics = { version = "0.12.1", features = ["std"]}
