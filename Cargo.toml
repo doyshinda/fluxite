@@ -1,5 +1,5 @@
 [package]
-name = "dwrs-metrics"
+name = "fluxite"
 version = "0.1.0"
 authors = ["Abe Friesen"]
 edition = "2018"
