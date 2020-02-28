@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use super::utils::{epoch_time, hist_to_values};
 
-/// Builder for [GraphiteObserver](GraphiteObserver).
+/// Builder for GraphiteObserver.
 pub struct GraphiteBuilder {
     quantiles: Vec<Quantile>,
     prefix: String,
@@ -15,7 +15,15 @@ pub struct GraphiteBuilder {
 impl GraphiteBuilder {
     /// Creates a new [GraphiteBuilder](GraphiteBuilder) with default values.
     ///
-    /// See [GraphiteObserver](GraphiteObserver) for usage of `prefix`.
+    /// `prefix` will be prepended to every metric sent to Graphite.
+    /// E.g., with `prefix="my_cluster.my_app"`, generating a metric like this:
+    /// ```
+    /// counter!("my_count", 1);
+    /// ```
+    /// will send the following to Graphite:
+    /// ```
+    /// my_cluster.my_app.my_count 1
+    /// ```
     pub fn new(prefix: Option<String>) -> Self {
         let quantiles = parse_quantiles(&[0.0, 0.5, 0.75, 0.99, 1.0]);
 
@@ -60,18 +68,7 @@ pub struct GraphiteObserver {
     quantiles: Vec<Quantile>,
     histos: HashMap<Key, Histogram<u64>>,
     metrics: Vec<String>,
-
-    /// A string that will be prepended to every metric sent to Graphite.
-    ///
-    /// E.g., with `prefix="my_cluster.my_app"`, generating a metric like this:
-    /// ```
-    /// counter!("my_count", 1);
-    /// ```
-    /// will send the following to Graphite:
-    /// ```
-    /// my_cluster.my_app.my_count 1
-    /// ```
-    pub prefix: String,
+    prefix: String,
 }
 
 impl GraphiteObserver {

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use super::utils::{epoch_time, hist_to_values};
 
-/// Builder for [InfluxObserver](InfluxObserver).
+/// Builder for InfluxObserver.
 pub struct InfluxBuilder {
     quantiles: Vec<Quantile>,
     prefix: String,
@@ -15,7 +15,16 @@ pub struct InfluxBuilder {
 impl InfluxBuilder {
     /// Creates a new [InfluxBuilder](InfluxBuilder) with default values.
     ///
-    /// See [InfluxObserver](InfluxObserver) for usage of `prefix`.
+    /// A CSV string of `key=value` tags that should be prepended to every metric sent to Influx.
+    ///
+    /// E.g., with `prefix="app=my_app,host=bar"`, generating a metric like this:
+    /// ```
+    /// counter!("my_count", 1);
+    /// ```
+    /// will send the following to InfluxDB:
+    /// ```
+    /// mycount,app=my_app,host=bar value=1
+    /// ```
     pub fn new(prefix: Option<String>) -> Self {
         let quantiles = parse_quantiles(&[0.0, 0.5, 0.75, 0.99, 1.0]);
 
@@ -55,18 +64,7 @@ pub struct InfluxObserver {
     quantiles: Vec<Quantile>,
     histos: HashMap<Key, Histogram<u64>>,
     metrics: Vec<String>,
-
-    /// A CSV string of `key=value` tags that should be prepended to every metric sent to Influx.
-    ///
-    /// E.g., with `prefix="app=my_app,host=bar"`, generating a metric like this:
-    /// ```
-    /// counter!("my_count", 1);
-    /// ```
-    /// will yield the following sent to InfluxDB:
-    /// ```
-    /// mycount,app=my_app,host=bar value=1
-    /// ```
-    pub prefix: String,
+    prefix: String,
 }
 
 impl InfluxObserver {

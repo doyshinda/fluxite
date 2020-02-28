@@ -2,7 +2,8 @@
 //!
 //! This library is a thin wrapper around
 //! [metrics-runtime](https://docs.rs/metrics-runtime/0.13.0/metrics_runtime/index.html)
-//! that supports formatting metrics in InfluxDB linefeed format and exporting them over UDP.
+//! that supports formatting metrics in InfluxDB linefeed or Graphite plaintext formats,
+//! and exporting them over UDP.
 use log::info;
 use metrics_runtime::Receiver;
 use std::{thread, time::Duration};
@@ -13,7 +14,7 @@ mod exporters;
 mod metrics_config;
 mod observers;
 
-pub use exporters::udp::UdpExporter;
+use exporters::udp::UdpExporter;
 pub use metrics_config::{MetricsConfig, ObserverType};
 pub use observers::{graphite::GraphiteBuilder, influx::InfluxBuilder};
 
@@ -23,7 +24,6 @@ pub use observers::{graphite::GraphiteBuilder, influx::InfluxBuilder};
 /// # Example
 /// ```
 /// let config = MetricsConfig {
-///     exporter_type: ExporterType::UDP,
 ///     endpoint: "localhost:8089",
 ///     observer_type: ObserverType::Influx,
 /// };
