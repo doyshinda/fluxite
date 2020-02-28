@@ -14,8 +14,11 @@ mod metrics_config;
 mod observers;
 
 pub use exporters::udp::UdpExporter;
-pub use metrics_config::{ExporterType, MetricsConfig, ObserverType};
-pub use observers::influx::InfluxBuilder;
+pub use metrics_config::{MetricsConfig, ObserverType};
+pub use observers::{
+    influx::InfluxBuilder,
+    graphite::GraphiteBuilder,
+};
 
 /// Initialize a metrics reporter with a [MetricsConfig](metric_config::MetricConfig).
 ///
@@ -31,24 +34,31 @@ pub use observers::influx::InfluxBuilder;
 /// ```
 pub fn init_reporter(settings: &MetricsConfig) -> Result<(), String> {
     let receiver = Receiver::builder()
-        .histogram(Duration::from_secs(10), Duration::from_secs(2))
+        .histogram(Duration::from_secs(15), Duration::from_secs(2))
         .build()
         .expect("failed to build receiver");
 
     let controller = receiver.controller();
-    let builder = match settings.observer_type {
-        ObserverType::Influx => InfluxBuilder::new(settings.prefix.clone()),
-    };
-    let mut exporter = match &settings.exporter_type {
-        ExporterType::UDP => UdpExporter::new(
-            controller.clone(),
-            builder,
-            Duration::from_secs(2),
-            &settings.endpoint,
+    let prefix = settings.prefix.clone();
+    let endpoint = settings.endpoint.clone();
+    match settings.observer_type {
+        ObserverType::Influx => thread::spawn(||
+            UdpExporter::new(
+                controller,
+                InfluxBuilder::new(prefix),
+                Duration::from_secs(2),
+                endpoint,
+            ).run()
         ),
+        ObserverType::Graphite => thread::spawn(||
+            UdpExporter::new(
+                controller,
+                GraphiteBuilder::new(prefix),
+                Duration::from_secs(2),
+                endpoint,
+            ).run()
+        )
     };
-
-    thread::spawn(move || exporter.run());
 
     receiver.install();
     info!("Successfully setup metrics");

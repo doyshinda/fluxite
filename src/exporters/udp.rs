@@ -20,13 +20,13 @@ where
     B::Output: Drain<String> + Observer,
     C: Observe,
 {
-    pub fn new(controller: C, builder: B, interval: Duration, endpoint: &str) -> Self {
+    pub fn new(controller: C, builder: B, interval: Duration, endpoint: String) -> Self {
         UdpExporter {
             controller,
             observer: builder.build(),
             sock: UdpSocket::bind("0.0.0.0:0").expect("failed to bind host socket"),
             interval,
-            endpoint: endpoint.to_string(),
+            endpoint,
         }
     }
 

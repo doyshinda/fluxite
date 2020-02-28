@@ -135,7 +135,7 @@ impl Drain<String> for InfluxObserver {
         let now = epoch_time();
         for (key, h) in self.histos.drain() {
             let (labels, name) = format_labels(key);
-            let values = hist_to_values(h.clone(), &self.quantiles);
+            let values = hist_to_values(&h, &self.quantiles);
             let m = if labels.is_empty() {
                 format!("{} {} {}", name, values, now.as_nanos())
             } else {
@@ -169,7 +169,7 @@ fn format_labels(key: Key) -> (String, String) {
     }
 }
 
-fn hist_to_values(hist: Histogram<u64>, quantiles: &[Quantile]) -> String {
+fn hist_to_values(hist: &Histogram<u64>, quantiles: &[Quantile]) -> String {
     let mut values = Vec::new();
     for quantile in quantiles {
         let value = hist.value_at_quantile(quantile.value());
