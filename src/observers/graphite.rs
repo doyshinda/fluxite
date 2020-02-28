@@ -3,7 +3,8 @@ use log::debug;
 use metrics_core::{Builder, Drain, Key, Observer};
 use metrics_util::{parse_quantiles, Quantile};
 use std::collections::HashMap;
-use std::time::SystemTime;
+
+use super::utils::{epoch_time, hist_to_values};
 
 /// Builder for [GraphiteObserver](GraphiteObserver).
 pub struct GraphiteBuilder {
@@ -42,7 +43,7 @@ impl Builder for GraphiteBuilder {
     fn build(&self) -> Self::Output {
         let prefix = match &self.prefix.len() {
             0 => "".to_string(),
-            _ => format!("{}.", self.prefix)
+            _ => format!("{}.", self.prefix),
         };
 
         GraphiteObserver {
@@ -113,7 +114,8 @@ impl Drain<String> for GraphiteObserver {
         let now = epoch_time();
         for (key, h) in self.histos.drain() {
             let (name, _) = key.into_parts();
-            for hist_value in hist_to_values(&h, &self.quantiles) {
+            let values = hist_to_values(&h, &self.quantiles, |a, b| format!("{} {}", a, b));
+            for hist_value in values {
                 let m = format!("{}{}.{} {}", self.prefix, name, hist_value, now.as_nanos());
                 self.metrics.push(m);
             }
@@ -123,20 +125,4 @@ impl Drain<String> for GraphiteObserver {
         self.metrics.clear();
         rendered
     }
-}
-
-fn epoch_time() -> std::time::Duration {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-}
-
-fn hist_to_values(hist: &Histogram<u64>, quantiles: &[Quantile]) -> Vec<String> {
-    let mut values = Vec::new();
-    for quantile in quantiles {
-        let value = hist.value_at_quantile(quantile.value());
-        values.push(format!("{} {}", quantile.label(), value));
-    }
-
-    values
 }

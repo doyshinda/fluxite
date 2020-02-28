@@ -15,10 +15,7 @@ mod observers;
 
 pub use exporters::udp::UdpExporter;
 pub use metrics_config::{MetricsConfig, ObserverType};
-pub use observers::{
-    influx::InfluxBuilder,
-    graphite::GraphiteBuilder,
-};
+pub use observers::{graphite::GraphiteBuilder, influx::InfluxBuilder};
 
 /// Initialize a metrics reporter with a [MetricsConfig](metric_config::MetricConfig).
 ///
@@ -42,22 +39,24 @@ pub fn init_reporter(settings: &MetricsConfig) -> Result<(), String> {
     let prefix = settings.prefix.clone();
     let endpoint = settings.endpoint.clone();
     match settings.observer_type {
-        ObserverType::Influx => thread::spawn(||
+        ObserverType::Influx => thread::spawn(|| {
             UdpExporter::new(
                 controller,
                 InfluxBuilder::new(prefix),
                 Duration::from_secs(2),
                 endpoint,
-            ).run()
-        ),
-        ObserverType::Graphite => thread::spawn(||
+            )
+            .run()
+        }),
+        ObserverType::Graphite => thread::spawn(|| {
             UdpExporter::new(
                 controller,
                 GraphiteBuilder::new(prefix),
                 Duration::from_secs(2),
                 endpoint,
-            ).run()
-        )
+            )
+            .run()
+        }),
     };
 
     receiver.install();

@@ -3,7 +3,8 @@ use log::debug;
 use metrics_core::{Builder, Drain, Key, Observer};
 use metrics_util::{parse_quantiles, Quantile};
 use std::collections::HashMap;
-use std::time::SystemTime;
+
+use super::utils::{epoch_time, hist_to_values};
 
 /// Builder for [InfluxObserver](InfluxObserver).
 pub struct InfluxBuilder {
@@ -74,7 +75,7 @@ impl InfluxObserver {
         let now = epoch_time();
         let prefix = match &self.prefix.len() {
             0 => "".to_string(),
-            _ => format!(",{}", self.prefix)
+            _ => format!(",{}", self.prefix),
         };
         if labels.is_empty() {
             format!(
@@ -135,7 +136,8 @@ impl Drain<String> for InfluxObserver {
         let now = epoch_time();
         for (key, h) in self.histos.drain() {
             let (labels, name) = format_labels(key);
-            let values = hist_to_values(&h, &self.quantiles);
+            let values =
+                hist_to_values(&h, &self.quantiles, |a, b| format!("{}={}", a, b)).join(",");
             let m = if labels.is_empty() {
                 format!("{} {} {}", name, values, now.as_nanos())
             } else {
@@ -150,12 +152,6 @@ impl Drain<String> for InfluxObserver {
     }
 }
 
-fn epoch_time() -> std::time::Duration {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-}
-
 fn format_labels(key: Key) -> (String, String) {
     let (name, labels) = key.into_parts();
     if labels.is_empty() {
@@ -167,14 +163,4 @@ fn format_labels(key: Key) -> (String, String) {
             .collect::<Vec<_>>();
         (kv_pairs.join(","), name.to_string())
     }
-}
-
-fn hist_to_values(hist: &Histogram<u64>, quantiles: &[Quantile]) -> String {
-    let mut values = Vec::new();
-    for quantile in quantiles {
-        let value = hist.value_at_quantile(quantile.value());
-        values.push(format!("{}={}", quantile.label(), value));
-    }
-
-    values.join(",")
 }
