@@ -50,11 +50,15 @@ impl Builder for InfluxBuilder {
     type Output = InfluxObserver;
 
     fn build(&self) -> Self::Output {
+        let prefix = match self.prefix.len() {
+            0 => "".to_string(),
+            _ => format!(",{}", self.prefix),
+        };
         InfluxObserver {
             quantiles: self.quantiles.clone(),
             histos: HashMap::new(),
             metrics: Vec::new(),
-            prefix: self.prefix.clone(),
+            prefix,
         }
     }
 }
@@ -71,15 +75,12 @@ impl InfluxObserver {
     fn format_metrics(&self, key: Key, value: u64, value_key: &str) -> String {
         let (name, labels) = key.into_parts();
         let now = epoch_time();
-        let prefix = match &self.prefix.len() {
-            0 => "".to_string(),
-            _ => format!(",{}", self.prefix),
-        };
+
         if labels.is_empty() {
             format!(
                 "{}{} {}={} {}",
                 name,
-                prefix,
+                self.prefix,
                 value_key,
                 value,
                 now.as_nanos()
@@ -92,7 +93,7 @@ impl InfluxObserver {
             format!(
                 "{}{},{} {}={} {}",
                 name,
-                prefix,
+                self.prefix,
                 kv_pairs.join(","),
                 value_key,
                 value,
@@ -137,9 +138,16 @@ impl Drain<String> for InfluxObserver {
             let values =
                 hist_to_values(&h, &self.quantiles, |a, b| format!("{}={}", a, b)).join(",");
             let m = if labels.is_empty() {
-                format!("{} {} {}", name, values, now.as_nanos())
+                format!("{}{} {} {}", name, self.prefix, values, now.as_nanos())
             } else {
-                format!("{},{} {} {}", name, labels, values, now.as_nanos())
+                format!(
+                    "{}{},{} {} {}",
+                    name,
+                    self.prefix,
+                    labels,
+                    values,
+                    now.as_nanos()
+                )
             };
             self.metrics.push(m);
         }
