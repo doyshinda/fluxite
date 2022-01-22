@@ -38,21 +38,22 @@ pub fn init_reporter(settings: &MetricsConfig) -> Result<(), String> {
     let controller = receiver.controller();
     let prefix = settings.prefix.clone();
     let endpoint = settings.endpoint.clone();
+    let duration = settings.duration.clone().unwrap_or(Duration::from_secs(5));
     match settings.observer_type {
-        ObserverType::Influx => thread::spawn(|| {
+        ObserverType::Influx => thread::spawn(move || {
             UdpExporter::new(
                 controller,
                 InfluxBuilder::new(prefix),
-                Duration::from_secs(2),
+                duration,
                 endpoint,
             )
             .run()
         }),
-        ObserverType::Graphite => thread::spawn(|| {
+        ObserverType::Graphite => thread::spawn(move || {
             UdpExporter::new(
                 controller,
                 GraphiteBuilder::new(prefix),
-                Duration::from_secs(2),
+                duration,
                 endpoint,
             )
             .run()

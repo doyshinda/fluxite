@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::time::Duration;
 
 /// Available Observer types.
 ///
@@ -21,4 +22,5 @@ pub struct MetricsConfig {
     pub endpoint: String,
     pub observer_type: ObserverType,
     pub prefix: Option<String>,
+    pub duration: Option<Duration>,
 }
