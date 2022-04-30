@@ -1,31 +1,27 @@
 # fluxite
 
-This library is a thin wrapper around [metrics-runtime](https://docs.rs/metrics-runtime/0.13.0/metrics_runtime/index.html) that supports formatting metrics in [InfluxDB](https://www.influxdata.com/) linefeed and [Graphite](https://graphiteapp.org/) plaintext format and exporting them over UDP.
+This library is used to emit metrics in either [InfluxDB](https://www.influxdata.com/) linefeed OR [Graphite](https://graphiteapp.org/) plaintext format and exporting them over UDP.
 
 ## Example
 The reporter should be initialized once at application startup:
 ```Rust
 let config = MetricsConfig {
     endpoint: "localhost:8089",
-    observer_type: ObserverType::Influx,
+    sink_type: SinkType::Influx,
+    prefix: None,
+    interval: None,
 };
 
 init_reporter(&config).unwrap();
 ```
-Reporting metrics works through the use of the [metrics facade crate](https://docs.rs/metrics/0.12.1/metrics/#use):
+Reporting metrics works through the use of the various macros:
 ```Rust
-use metrics::timing;
+use fluxite::count;
 
-let start = Instant::now();
-// ...
-// do work
-// ...
-let end = Instant::now();
-
-timing!("work_time_ns", start, end);
+count!("my_api", 1, "user" => "foo");
 ```
 
-Will emit a metric with the percentiles like so:
+Will emit an InfluxDB metric like this:
 ```
-work_time_ns min=100,p50=150,p75=160,p99=180,max=200 <ts>
+my_api,user=foo count=1 <timestamp>
 ```

@@ -1,67 +1,85 @@
-//! Metrics collection, aggregation and exportation library.
+//! Metrics exportation library.
 //!
-//! This library is a thin wrapper around
-//! [metrics-runtime](https://docs.rs/metrics-runtime/0.13.0/metrics_runtime/index.html)
-//! that supports formatting metrics in InfluxDB linefeed or Graphite plaintext formats,
-//! and exporting them over UDP.
+//! This library is used to emit metrics in either [InfluxDB](https://www.influxdata.com/) linefeed
+//! OR [Graphite](https://graphiteapp.org/) plaintext format and exporting them over UDP.
+use core::sync::atomic::{AtomicUsize, Ordering};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use log::info;
-use metrics_runtime::Receiver;
 use std::{thread, time::Duration};
 
-pub use metrics;
+// Copying how this works from `metrics-rs` library
+static mut SINK: &'static dyn Sink = &NoopSink;
+static STATE: AtomicUsize = AtomicUsize::new(0);
+const INITIALIZED: usize = 1;
 
 mod exporters;
 mod metrics_config;
-mod observers;
+mod sinks;
 
 use exporters::udp::UdpExporter;
-pub use metrics_config::{MetricsConfig, ObserverType};
-pub use observers::{graphite::GraphiteBuilder, influx::InfluxBuilder};
+pub use fluxite_macro::count;
+pub use metrics_config::{MetricsConfig, SinkType};
+pub use sinks::{graphite::GraphiteSink, influx::InfluxSink, sink::NoopSink, sink::Sink};
 
-/// Initialize a metrics reporter with a [MetricsConfig](metric_config::MetricConfig).
+#[derive(Debug)]
+#[doc(hidden)]
+pub struct Label<'a>(&'a str, &'a str);
+
+impl<'a> Label<'a> {
+    pub fn from_parts(key: &'a str, val: &'a str) -> Self {
+        Label(key, val)
+    }
+}
+/// Initialize the sink and exporter with a [MetricsConfig].
 ///
-/// The reporter should be initialized at application startup.
+/// Initialization should occur at application startup.
 /// # Example
-/// ```
+/// ```no_run
+/// use fluxite::{MetricsConfig, SinkType, init_exporter};
+///
 /// let config = MetricsConfig {
-///     endpoint: "localhost:8089",
-///     observer_type: ObserverType::Influx,
+///     endpoint: "localhost:8089".to_string(),
+///     sink_type: SinkType::Influx,
+///     interval: None,
+///     prefix: None,
 /// };
-/// init_reporter(&config).unwrap();
+/// init_exporter(&config).unwrap();
 /// ```
-pub fn init_reporter(settings: &MetricsConfig) -> Result<(), String> {
-    let receiver = Receiver::builder()
-        .histogram(Duration::from_secs(15), Duration::from_secs(2))
-        .build()
-        .expect("failed to build receiver");
-
-    let controller = receiver.controller();
-    let prefix = settings.prefix.clone();
+pub fn init_exporter(settings: &MetricsConfig) -> Result<(), String> {
+    let prefix = settings.prefix.clone().unwrap_or("".to_string());
     let endpoint = settings.endpoint.clone();
-    let duration = settings.duration.clone().unwrap_or(Duration::from_secs(5));
-    match settings.observer_type {
-        ObserverType::Influx => thread::spawn(move || {
-            UdpExporter::new(
-                controller,
-                InfluxBuilder::new(prefix),
-                duration,
-                endpoint,
-            )
-            .run()
-        }),
-        ObserverType::Graphite => thread::spawn(move || {
-            UdpExporter::new(
-                controller,
-                GraphiteBuilder::new(prefix),
-                duration,
-                endpoint,
-            )
-            .run()
-        }),
-    };
+    let interval = settings.interval.clone().unwrap_or(Duration::from_secs(5));
 
-    receiver.install();
+    let (tx, rx): (Sender<String>, Receiver<String>) = unbounded();
+    match settings.sink_type {
+        SinkType::Influx => {
+            let s = InfluxSink::new(&prefix, tx);
+            unsafe {
+                SINK = &*Box::into_raw(Box::new(s));
+                STATE.store(INITIALIZED, Ordering::SeqCst);
+            }
+        }
+        SinkType::Graphite => {
+            let s = GraphiteSink::new(&prefix, tx);
+            unsafe {
+                SINK = &*Box::into_raw(Box::new(s));
+                STATE.store(INITIALIZED, Ordering::SeqCst);
+            }
+        }
+    }
+
+    thread::spawn(move || UdpExporter::new(interval, endpoint, rx).run());
+
     info!("Successfully setup metrics");
 
     Ok(())
+}
+
+#[doc(hidden)]
+pub fn get_sink() -> Option<&'static dyn Sink> {
+    if STATE.load(Ordering::Relaxed) != INITIALIZED {
+        return None;
+    }
+
+    unsafe { Some(SINK) }
 }

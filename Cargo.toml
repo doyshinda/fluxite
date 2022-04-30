@@ -8,13 +8,16 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.8"
-hdrhistogram = "*"
-metrics-util = "0.3.1"
-metrics = { version = "0.12.1", features = ["std"]}
-metrics-core = "0.5.2"
 config = { version = "*", features = ["yaml"] }
 serde = { version = "1.0", features = ["derive"] }
+crossbeam-channel = "0.5.4"
 
-[dependencies.metrics-runtime]
-version = "0.12.1"
-default-features = false
+[dependencies.fluxite_macro]
+path = "./fluxite_macro"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "fluxite_benchmark"
+harness = false
