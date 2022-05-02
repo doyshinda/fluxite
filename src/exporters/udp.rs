@@ -6,6 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const MAX_SIZE: usize = 25000;
+
 /// Exports metrics over UDP.
 pub struct UdpExporter {
     sock: UdpSocket,
@@ -26,11 +28,20 @@ impl UdpExporter {
 
     pub fn run(&mut self) {
         let mut metrics: Vec<String> = Vec::new();
+        let mut size;
+
         loop {
             let start = Instant::now();
             metrics.clear();
+            size = 0;
             while let Some(message) = self.rx.try_iter().next() {
+                size += message.len();
                 metrics.push(message);
+                if size > MAX_SIZE {
+                    self.turn(metrics.join("\n"));
+                    size = 0;
+                    metrics.clear();
+                }
             }
 
             if !metrics.is_empty() {
